@@ -99,22 +99,29 @@ Daily Float Reconciliation Report\n\n"""
     print(report)
 
     # --- Send email via SendGrid ---
-    if SENDGRID_API_KEY and FROM_EMAIL and TO_EMAIL:
-        sg = sendgrid.SendGridAPIClient(api_key=SENDGRID_API_KEY.strip('"'))
-        message = Mail(
-            from_email=FROM_EMAIL,
-            to_emails=TO_EMAIL,
-            subject=f"Daily Float Reconciliation Report for {report_date}",
-            plain_text_content=report,
-            html_content=html_report
-        )
-        try:
-            response = sg.send(message)
-            print(f"Email sent! Status code: {response.status_code}")
-        except Exception as e:
-            print(f"Failed to send email: {e}")
+    # First, check if all balances were successfully retrieved
+    if None not in (CIMB_balance, V2_balance, VAS_balance):
+        # If all balances are present, then check for SendGrid credentials
+        if SENDGRID_API_KEY and FROM_EMAIL and TO_EMAIL:
+            sg = sendgrid.SendGridAPIClient(api_key=SENDGRID_API_KEY.strip('"'))
+            message = Mail(
+                from_email=FROM_EMAIL,
+                to_emails=TO_EMAIL,
+                subject=f"Daily Float Reconciliation Report for {report_date}",
+                plain_text_content=report,
+                html_content=html_report
+            )
+            try:
+                response = sg.send(message)
+                print(f"Email sent! Status code: {response.status_code}")
+            except Exception as e:
+                print(f"Failed to send email: {e}")
+        else:
+            # Credentials missing, so email cannot be sent
+            print("SendGrid credentials not set. Email not sent due to missing credentials.")
     else:
-        print("SendGrid credentials not set. Email not sent.")
+        # One or more balances are missing, so email will not be sent
+        print("One or more balances missing. Email not sent due to incomplete data.")
 
     # --- Clean up downloads directory ---
     import glob
@@ -135,7 +142,7 @@ if __name__ == "__main__":
     while True:
         now_bangkok = datetime.now(BANGKOK_TZ)
         # Run only once per day at 00:15
-        if now_bangkok.hour == 0 and now_bangkok.minute == 15:
+        if now_bangkok.hour == 17 and now_bangkok.minute == 15:
             if last_run_date != now_bangkok.date():
                 run_report()
                 last_run_date = now_bangkok.date()
