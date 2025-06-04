@@ -52,25 +52,25 @@ def login_and_get_cimb_balance():
             company_field = driver.find_element(By.ID, "corpId")
             print("Found company ID field.")
         except Exception as e:
-            print("❌ Could not find company ID field (corpId):", e)
+            print(" Could not find company ID field (corpId):", e)
             return
         try:
             user_field = driver.find_element(By.ID, "userName")
             print("Found username field.")
         except Exception as e:
-            print("❌ Could not find username field (userName):", e)
+            print(" Could not find username field (userName):", e)
             return
         try:
             password_field = driver.find_element(By.ID, "passwordEncryption")
             print("Found password field.")
         except Exception as e:
-            print("❌ Could not find password field (passwordEncryption):", e)
+            print(" Could not find password field (passwordEncryption):", e)
             return
         try:
             login_button = driver.find_element(By.NAME, "submit1")
             print("Found login button.")
         except Exception as e:
-            print("❌ Could not find login button (submit1):", e)
+            print(" Could not find login button (submit1):", e)
             return
         # Now fill and submit
         company_field.send_keys(CIMB_COMPANY_ID)
@@ -79,24 +79,21 @@ def login_and_get_cimb_balance():
         login_button.click()
         print("Login submitted, waiting for dashboard...")
         print("Login submitted, waiting for dashboard to load...")
-        from selenium.common.exceptions import NoSuchElementException, TimeoutException
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
         try:
             # Wait for URL to change to 'returnMain'
-            WebDriverWait(driver, 20).until(
+            WebDriverWait(driver, 60).until(
                 EC.url_contains("returnMain")
             )
-            print("✅ URL changed to dashboard. Now waiting for frameset...")
+            print(" URL changed to dashboard. Now waiting for frameset...")
             # Wait for menuFrame to appear
-            WebDriverWait(driver, 20).until(
+            WebDriverWait(driver, 60).until(
                 lambda d: len(d.find_elements(By.NAME, "menuFrame")) > 0
             )
-            print("✅ Frameset loaded, proceeding to frame navigation.")
+            print(" Frameset loaded, proceeding to frame navigation.")
             print("[WAIT] Dashboard loaded. Waiting 5 seconds...")
             time.sleep(5)
         except Exception:
-            print("❌ Dashboard did not load after login. Stopping.")
+            print(" Dashboard did not load after login. Stopping.")
             return None
 
         # --- Frame switching logic ---
@@ -110,7 +107,7 @@ def login_and_get_cimb_balance():
             # Click 'Account Service & Information Management'
             menu_div = driver.find_element(By.XPATH, "//div[contains(text(), 'Account Service')]")
             menu_div.click()
-            print("✅ Clicked 'Account Service & Information Management' menu.")
+            print(" Clicked 'Account Service & Information Management' menu.")
             print("[WAIT] Clicked Account Service & Information Management. Waiting 5 seconds...")
             time.sleep(5)
             # Print all <a> links in menuFrame after expanding menu
@@ -121,20 +118,21 @@ def login_and_get_cimb_balance():
             # Click 'Account Summary' using its id
             account_summary_link = driver.find_element(By.ID, "subs8")
             account_summary_link.click()
-            print("✅ Clicked 'Account Summary' link.")
+            print(" Clicked 'Account Summary' link.")
             print("[WAIT] Clicked Account Summary. Waiting 10 seconds...")
             time.sleep(10)
         except Exception:
-            print("❌ Could not find or click the menu or Account Summary in menuFrame.")
+            print(" Could not find or click the menu or Account Summary in menuFrame.")
             return None
         try:
             # 2. Switch to mainFrame to extract account and balance
             driver.switch_to.default_content()
             driver.switch_to.frame("mainFrame")
-            print("[WAIT] Switched to mainFrame. Waiting up to 60 seconds for balance element...")
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
+            print("[WAIT] Switched to mainFrame. Printing all <a> elements for debug...")
+            links = driver.find_elements(By.TAG_NAME, "a")
+            for idx, link in enumerate(links):
+                print(f"  Link {idx}: text='{link.text.strip()}', onclick='{link.get_attribute('onclick')}'")
+            print("[WAIT] Now waiting up to 60 seconds for balance element...")
             wait_start = time.time()
             try:
                 # Wait up to 60 seconds for the balance element to appear
@@ -150,32 +148,36 @@ def login_and_get_cimb_balance():
             print(f"✅ Extracted CIMB Available Balance: {cimb_balance} THB")
             print("[WAIT] Extracted balance. Waiting 5 seconds...")
             time.sleep(5)
-            # Attempt to logout via topFrame
-            try:
-                driver.switch_to.default_content()
-                driver.switch_to.frame("topFrame")
-                logout_link = driver.find_element(By.XPATH, "//a[contains(@href, 'action=logout') or @onclick='logout()']")
-                logout_link.click()
-                print("✅ Clicked logout link. Session closed.")
-            except Exception:
-                print("❌ Could not find or click the logout link. Please check manually.")
+            # Robust logout logic
+            logout_success = False
+            for frame_name in ["topFrame", "mainFrame", None]:
+                try:
+                    driver.switch_to.default_content()
+                    if frame_name:
+                        driver.switch_to.frame(frame_name)
+                    print(f"[LOGOUT] Searching for logout link in {frame_name or 'default content'}...")
+                    logout_link = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, 'action=logout') or @onclick='logout()']"))
+                    )
+                    logout_link.click()
+                    print(f"✅ Clicked logout link in {frame_name or 'default content'}.")
+                    # Wait for login page to reappear (by URL or login field)
+                    driver.switch_to.default_content()
+                    try:
+                        WebDriverWait(driver, 10).until(
+                            EC.presence_of_element_located((By.ID, "corpId"))
+                        )
+                        print("✅ Logout confirmed: Login page detected.")
+                        logout_success = True
+                        break
+                    except Exception:
+                        print("[WARN] Logout link clicked but login page not detected yet.")
+                except Exception as e:
+                    print(f"[LOGOUT] Could not find/click logout link in {frame_name or 'default content'}: {e}")
+            if not logout_success:
+                print("❌ WARNING: Logout could not be confirmed. Please check your session manually.")
         except Exception:
             print("❌ Could not find or extract the account or balance in mainFrame.")
-        try:
-            # 3. Switch to topFrame or mainFrame to click logout (try both)
-            driver.switch_to.default_content()
-            try:
-                driver.switch_to.frame("topFrame")
-            except Exception:
-                try:
-                    driver.switch_to.frame("mainFrame")
-                except Exception:
-                    pass
-            logout_link = driver.find_element(By.XPATH, "//a[contains(@href, 'action=logout') or @onclick='logout()']")
-            logout_link.click()
-            print("✅ Clicked logout link. Session closed.")
-        except Exception:
-            print("❌ Could not find or click the logout link. Please check manually.")
         return cimb_balance
 
     except Exception as e:
