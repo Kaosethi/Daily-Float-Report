@@ -38,19 +38,19 @@ def run_report():
     V2_balance = safe_float(login_and_test_v2())
     V2_time = datetime.now(BANGKOK_TZ) if V2_balance is not None else None
     if V2_balance is not None:
-        print(f"✅ Extracted V2 Balance: {V2_balance:,.2f} THB at {V2_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"[OK] Extracted V2 Balance: {V2_balance:,.2f} THB at {V2_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
     print("Extracting VAS balance...")
     VAS_balance = safe_float(login_vas())
     VAS_time = datetime.now(BANGKOK_TZ) if VAS_balance is not None else None
     if VAS_balance is not None:
-        print(f"✅ Extracted VAS Balance: {VAS_balance:,.2f} THB at {VAS_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"[OK] Extracted VAS Balance: {VAS_balance:,.2f} THB at {VAS_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
     print("Extracting CIMB balance...")
     CIMB_balance = safe_float(login_and_get_cimb_balance())
     CIMB_time = datetime.now(BANGKOK_TZ) if CIMB_balance is not None else None
     if CIMB_balance is not None:
-        print(f"✅ Extracted CIMB Balance: {CIMB_balance:,.2f} THB at {CIMB_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        print(f"[OK] Extracted CIMB Balance: {CIMB_balance:,.2f} THB at {CIMB_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
     # Use a single report generated timestamp for the email (Asia/Bangkok time)
     report_generated_time = datetime.now(BANGKOK_TZ)
@@ -134,15 +134,15 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
             )
             try:
                 response = sg.send(message)
-                print(f"Email sent! Status code: {response.status_code}")
+                print(f"[OK] Email sent! Status code: {response.status_code}")
             except Exception as e:
-                print(f"Failed to send email: {e}")
+                print(f"[ERROR] Failed to send email: {e}")
         else:
             # Credentials missing, so email cannot be sent
-            print("SendGrid credentials not set. Email not sent due to missing credentials.")
+            print("[ERROR] SendGrid credentials not set. Email not sent due to missing credentials.")
     else:
         # One or more balances are missing, so email will not be sent
-        print("One or more balances missing. Email not sent due to incomplete data.")
+        print("[ERROR] One or more balances missing. Email not sent due to incomplete data.")
 
     # --- Clean up downloads directory ---
     import glob
@@ -150,18 +150,15 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
     for file_path in glob.glob(os.path.join(downloads_dir, "*")):
         try:
             os.remove(file_path)
-            print(f"Deleted: {file_path}")
+            print(f"[OK] Deleted: {file_path}")
         except Exception as e:
-            print(f"Could not delete {file_path}: {e}")
+            print(f"[ERROR] Could not delete {file_path}: {e}")
 
     return all_balances_ok
 
 if __name__ == "__main__":
-    # --- TEMPORARY: Run report ONCE for manual testing ---
-    # The scheduling loop is commented out below for easy restoration.
     run_report()
-    # --- Restore this code for real scheduling ---
-    '''
+    # --- Restore this code for real scheduling
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
     print("Scheduler started. Waiting for next run at 02:00 Asia/Bangkok time...")
@@ -174,7 +171,7 @@ if __name__ == "__main__":
         minute = now_bangkok.minute
 
         # Normal daily run at 02:00
-        if hour == 2 and minute == 0 and last_run_date != now_bangkok.date():
+        if hour == 2 and minute == 00 and last_run_date != now_bangkok.date():
             success = run_report()
             if success:
                 last_run_date = now_bangkok.date()
@@ -199,4 +196,3 @@ if __name__ == "__main__":
 
         print("Waiting for next run...")
         time.sleep(30)
-    '''

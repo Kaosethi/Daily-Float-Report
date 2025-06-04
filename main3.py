@@ -123,7 +123,6 @@ def login_and_get_cimb_balance():
             time.sleep(10)
         except Exception:
             print(" Could not find or click the menu or Account Summary in menuFrame.")
-            return None
         try:
             # 2. Switch to mainFrame to extract account and balance
             driver.switch_to.default_content()
@@ -134,48 +133,62 @@ def login_and_get_cimb_balance():
                 print(f"  Link {idx}: text='{link.text.strip()}', onclick='{link.get_attribute('onclick')}'")
             print("[WAIT] Now waiting up to 60 seconds for balance element...")
             wait_start = time.time()
+            acct_number = os.getenv("CIMB_ACCOUNT_NUMBER", "7013252356")
+            cimb_balance = None
+            error_occurred = False
             try:
-                # Wait up to 60 seconds for the balance element to appear
-                balance_link = WebDriverWait(driver, 60).until(
-                    EC.presence_of_element_located((By.XPATH, "//a[contains(@onclick, \"onViewLastTransaction('7013252356')\")]"))
-                )
-                print(f"[WAIT] Balance element appeared after {int(time.time()-wait_start)} seconds.")
-            except Exception as e:
-                print(f"[WARN] Balance element did not appear within 60 seconds: {e}")
-                return None
-            balance_text = balance_link.text.strip().replace(',', '')
-            cimb_balance = float(balance_text)
-            print(f"✅ Extracted CIMB Available Balance: {cimb_balance} THB")
-            print("[WAIT] Extracted balance. Waiting 5 seconds...")
-            time.sleep(5)
-            # Robust logout logic
-            logout_success = False
-            for frame_name in ["topFrame", "mainFrame", None]:
-                try:
-                    driver.switch_to.default_content()
-                    if frame_name:
-                        driver.switch_to.frame(frame_name)
-                    print(f"[LOGOUT] Searching for logout link in {frame_name or 'default content'}...")
-                    logout_link = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, 'action=logout') or @onclick='logout()']"))
-                    )
-                    logout_link.click()
-                    print(f"✅ Clicked logout link in {frame_name or 'default content'}.")
-                    # Wait for login page to reappear (by URL or login field)
-                    driver.switch_to.default_content()
+                # Extraction block
+                acct_idx = None
+                for idx, link in enumerate(links):
+                    if acct_number in link.text:
+                        acct_idx = idx
+                        print(f"[INFO] Found account link at index {acct_idx}: {link.text}")
+                        break
+                if acct_idx is not None and acct_idx + 1 < len(links):
+                    balance_link = links[acct_idx + 1]
+                    balance_text = balance_link.text.strip().replace(',', '')
                     try:
+                        cimb_balance = float(balance_text)
+                        print(f"✅ Extracted CIMB Available Balance for {acct_number}: {cimb_balance} THB")
+                    except Exception as e:
+                        print(f"❌ Could not parse balance '{balance_text}' as float: {e}")
+                        error_occurred = True
+                    print("[WAIT] Extracted balance. Waiting 5 seconds...")
+                    time.sleep(5)
+                else:
+                    print(f"❌ Could not find account {acct_number} or its balance link.")
+                    error_occurred = True
+            except Exception as e:
+                print(f"❌ Error during extraction: {e}")
+                error_occurred = True
+            finally:
+                # Logout logic
+                logout_success = False
+                for frame_name in ["topFrame", None]:
+                    try:
+                        driver.switch_to.default_content()
+                        if frame_name:
+                            driver.switch_to.frame(frame_name)
+                        print(f"[LOGOUT] Searching for logout link in {frame_name or 'default content'}...")
+                        logout_link = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, 'action=logout') or @onclick='logout()']"))
+                        )
+                        logout_link.click()
+                        print(f"✅ Clicked logout link in {frame_name or 'default content'}.")
+                        # Wait for login page to reappear (by URL or login field)
+                        driver.switch_to.default_content()
                         WebDriverWait(driver, 10).until(
                             EC.presence_of_element_located((By.ID, "corpId"))
                         )
                         print("✅ Logout confirmed: Login page detected.")
                         logout_success = True
                         break
-                    except Exception:
-                        print("[WARN] Logout link clicked but login page not detected yet.")
-                except Exception as e:
-                    print(f"[LOGOUT] Could not find/click logout link in {frame_name or 'default content'}: {e}")
-            if not logout_success:
-                print("❌ WARNING: Logout could not be confirmed. Please check your session manually.")
+                    except Exception as e:
+                        print(f"[LOGOUT] Could not find/click logout link in {frame_name or 'default content'}: {e}")
+                if not logout_success:
+                    print("❌ WARNING: Logout could not be confirmed. Please check your session manually.")
+            if error_occurred:
+                return None
         except Exception:
             print("❌ Could not find or extract the account or balance in mainFrame.")
         return cimb_balance
