@@ -135,7 +135,6 @@ def login_and_get_cimb_balance():
             from selenium.webdriver.common.by import By
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
-            import time
             wait_start = time.time()
             try:
                 # Wait up to 60 seconds for the balance element to appear

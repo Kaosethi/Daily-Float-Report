@@ -157,6 +157,11 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
     return all_balances_ok
 
 if __name__ == "__main__":
+    # --- TEMPORARY: Run report ONCE for manual testing ---
+    # The scheduling loop is commented out below for easy restoration.
+    run_report()
+    # --- Restore this code for real scheduling ---
+    '''
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
     print("Scheduler started. Waiting for next run at 02:00 Asia/Bangkok time...")
@@ -169,7 +174,7 @@ if __name__ == "__main__":
         minute = now_bangkok.minute
 
         # Normal daily run at 02:00
-        if hour == 2 and minute == 00 and last_run_date != now_bangkok.date():
+        if hour == 2 and minute == 0 and last_run_date != now_bangkok.date():
             success = run_report()
             if success:
                 last_run_date = now_bangkok.date()
@@ -194,3 +199,4 @@ if __name__ == "__main__":
 
         print("Waiting for next run...")
         time.sleep(30)
+    '''
