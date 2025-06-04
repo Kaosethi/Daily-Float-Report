@@ -31,15 +31,33 @@ def safe_float(val):
         return None
 
 def run_report():
+    import pytz
+    BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
+
     print("Extracting V2 balance...")
     V2_balance = safe_float(login_and_test_v2())
+    V2_time = datetime.now(BANGKOK_TZ) if V2_balance is not None else None
+    if V2_balance is not None:
+        print(f"✅ Extracted V2 Balance: {V2_balance:,.2f} THB at {V2_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
     print("Extracting VAS balance...")
     VAS_balance = safe_float(login_vas())
+    VAS_time = datetime.now(BANGKOK_TZ) if VAS_balance is not None else None
+    if VAS_balance is not None:
+        print(f"✅ Extracted VAS Balance: {VAS_balance:,.2f} THB at {VAS_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
     print("Extracting CIMB balance...")
     CIMB_balance = safe_float(login_and_get_cimb_balance())
+    CIMB_time = datetime.now(BANGKOK_TZ) if CIMB_balance is not None else None
+    if CIMB_balance is not None:
+        print(f"✅ Extracted CIMB Balance: {CIMB_balance:,.2f} THB at {CIMB_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+
+    # Use a single report generated timestamp for the email (Asia/Bangkok time)
+    report_generated_time = datetime.now(BANGKOK_TZ)
+    report_generated_str = report_generated_time.strftime('%Y-%m-%d %H:%M:%S %Z')
 
     report = f"""
-Daily Float Reconciliation Report\n\n"""
+Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n\n"""
     if CIMB_balance is not None:
         report += f"CIMB Balance: {CIMB_balance:,.2f} THB\n"
     else:
@@ -60,7 +78,7 @@ Daily Float Reconciliation Report\n\n"""
   <head>
     <style>
       body {{ font-family: Arial, sans-serif; }}
-      .report-table {{ border-collapse: collapse; width: 400px; margin: 18px 0; }}
+      .report-table {{ border-collapse: collapse; width: 500px; margin: 18px 0; }}
       .report-table th, .report-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
       .report-table th {{ background-color: #f2f2f2; font-weight: bold; }}
       .ok {{ color: #228B22; font-weight: bold; }}
@@ -70,6 +88,7 @@ Daily Float Reconciliation Report\n\n"""
   </head>
   <body>
     <h2>Daily Float Reconciliation Report for {report_date}</h2>
+    <p><b>Report generated at: {report_generated_str}</b></p>
     <table class="report-table">
       <tr><th>Account</th><th>Balance (THB)</th></tr>
       <tr><td>CIMB</td><td>{(f"{CIMB_balance:,.2f}" if CIMB_balance is not None else '<span class="error">ERROR</span>')}</td></tr>
@@ -78,7 +97,9 @@ Daily Float Reconciliation Report\n\n"""
     </table>
 '''
 
-    if None not in (CIMB_balance, V2_balance, VAS_balance):
+    all_balances_ok = None not in (CIMB_balance, V2_balance, VAS_balance)
+
+    if all_balances_ok:
         result = CIMB_balance - (V2_balance + VAS_balance)
         report += f"\nCIMB - (V2 + VAS) = {result:,.2f} THB\n\n"
         if result >= 0:
@@ -133,18 +154,43 @@ Daily Float Reconciliation Report\n\n"""
         except Exception as e:
             print(f"Could not delete {file_path}: {e}")
 
+    return all_balances_ok
 
 if __name__ == "__main__":
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
-    print("Scheduler started. Waiting for next run at 00:15 Asia/Bangkok time...")
+    print("Scheduler started. Waiting for next run at 02:00 Asia/Bangkok time...")
     last_run_date = None
+    last_failed_retry_hour = None
+    retry_on_failure = False
     while True:
         now_bangkok = datetime.now(BANGKOK_TZ)
-        # Run only once per day at 00:15
-        if now_bangkok.hour == 17 and now_bangkok.minute == 15:
-            if last_run_date != now_bangkok.date():
-                run_report()
+        hour = now_bangkok.hour
+        minute = now_bangkok.minute
+
+        # Normal daily run at 02:00
+        if hour == 2 and minute == 00 and last_run_date != now_bangkok.date():
+            success = run_report()
+            if success:
                 last_run_date = now_bangkok.date()
+                retry_on_failure = False
+            else:
+                retry_on_failure = True
+                last_failed_retry_hour = hour
+
+        # Retry on the hour if previous run failed, but only up to and including 09:00
+        elif retry_on_failure and minute == 0 and last_failed_retry_hour != hour and 2 < hour <= 9:
+            print(f"Retrying extraction at {hour:02d}:00...")
+            success = run_report()
+            if success:
+                last_run_date = now_bangkok.date()
+                retry_on_failure = False
+            else:
+                last_failed_retry_hour = hour
+            # If it's after 09:00, stop retrying until the next day
+        elif retry_on_failure and hour > 9:
+            print("Maximum retry window reached (after 09:00). Will not retry until next scheduled day.")
+            retry_on_failure = False
+
         print("Waiting for next run...")
         time.sleep(30)

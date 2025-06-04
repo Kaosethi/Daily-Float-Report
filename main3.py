@@ -131,10 +131,21 @@ def login_and_get_cimb_balance():
             # 2. Switch to mainFrame to extract account and balance
             driver.switch_to.default_content()
             driver.switch_to.frame("mainFrame")
-            print("[WAIT] Switched to mainFrame. Waiting 5 seconds...")
-            time.sleep(5)
-            # Find the available balance for the account
-            balance_link = driver.find_element(By.XPATH, "//a[contains(@onclick, \"onViewLastTransaction('7013252356\")]")
+            print("[WAIT] Switched to mainFrame. Waiting up to 60 seconds for balance element...")
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            import time
+            wait_start = time.time()
+            try:
+                # Wait up to 60 seconds for the balance element to appear
+                balance_link = WebDriverWait(driver, 60).until(
+                    EC.presence_of_element_located((By.XPATH, "//a[contains(@onclick, \"onViewLastTransaction('7013252356')\")]"))
+                )
+                print(f"[WAIT] Balance element appeared after {int(time.time()-wait_start)} seconds.")
+            except Exception as e:
+                print(f"[WARN] Balance element did not appear within 60 seconds: {e}")
+                return None
             balance_text = balance_link.text.strip().replace(',', '')
             cimb_balance = float(balance_text)
             print(f"✅ Extracted CIMB Available Balance: {cimb_balance} THB")
