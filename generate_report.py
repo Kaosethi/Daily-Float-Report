@@ -157,7 +157,6 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
     return all_balances_ok
 
 if __name__ == "__main__":
-    run_report()
     # --- Restore this code for real scheduling
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
