@@ -63,7 +63,7 @@ def setup_logger():
     # Add handler to logger
     logger.addHandler(console_handler)
     
-    logging.info(f"Logger initialized. Log file: {log_file}")
+    logging.info("Logger initialized (console logging only)")
     return logger
 
 # Define custom log functions for maintaining the style used in the codebase
