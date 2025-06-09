@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 import sendgrid
 from sendgrid.helpers.mail import Mail
 import schedule
-import time
-from datetime import datetime, timedelta
+import time as time_module
+from datetime import datetime, timedelta, time
 import pytz
 import logging
 # Import our custom logger
@@ -164,39 +164,85 @@ if __name__ == "__main__":
     # --- Restore this code for real scheduling
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
-    log_info("Scheduler started. Waiting for next run at 10:00 Asia/Bangkok time...")
+    log_info("Scheduler started. Waiting for next run at 2:01 Asia/Bangkok time...")
+    
     last_run_date = None
-    last_failed_retry_hour = None
+    last_failed_retry_datetime = None
     retry_on_failure = False
+    
+    # Define the daily scheduled run time (10:00)
+    SCHEDULED_RUN_HOUR = 2
+    SCHEDULED_RUN_MINUTE = 1
+    
+    # Define retry window end time (09:00)
+    RETRY_END_HOUR = 9
+    RETRY_END_MINUTE = 1
+    
+    # Define minimum time between retries (1 hour)
+    RETRY_INTERVAL = timedelta(hours=1)
+    
     while True:
         now_bangkok = datetime.now(BANGKOK_TZ)
-        hour = now_bangkok.hour
-        minute = now_bangkok.minute
-
-        # Normal daily run at 02:00
-        if hour == 10 and minute == 00 and last_run_date != now_bangkok.date():
+        current_date = now_bangkok.date()
+        
+        # Create datetime objects for comparisons
+        scheduled_time = BANGKOK_TZ.localize(datetime.combine(
+            current_date, 
+            time(SCHEDULED_RUN_HOUR, SCHEDULED_RUN_MINUTE)
+        ))
+        
+        retry_end_time = BANGKOK_TZ.localize(datetime.combine(
+            current_date,
+            time(RETRY_END_HOUR, RETRY_END_MINUTE)
+        ))
+        
+        # Check if it's time for the daily scheduled run
+        is_scheduled_run_time = (
+            now_bangkok.time().hour == SCHEDULED_RUN_HOUR and
+            now_bangkok.time().minute == SCHEDULED_RUN_MINUTE and
+            (last_run_date is None or last_run_date != current_date)
+        )
+        
+        # Normal daily run at 2:01
+        if is_scheduled_run_time:
+            log_info(f"Starting scheduled daily run at {now_bangkok.strftime('%Y-%m-%d %H:%M:%S')}")
             success = run_report()
             if success:
-                last_run_date = now_bangkok.date()
+                last_run_date = current_date
                 retry_on_failure = False
+                log_success("Scheduled report completed successfully")
             else:
                 retry_on_failure = True
-                last_failed_retry_hour = hour
-                log_warning(f"Report run failed. Will retry on the next hour.")
+                last_failed_retry_datetime = now_bangkok
+                log_warning("Report run failed. Will retry in one hour.")
 
-        # Retry on the hour if previous run failed, but only up to and including 09:00
-        elif retry_on_failure and minute == 0 and last_failed_retry_hour != hour and 2 < hour <= 9:
-            log_info(f"Retrying extraction at {hour:02d}:00...")
-            success = run_report()
-            if success:
-                last_run_date = now_bangkok.date()
+        # Handle retry logic
+        elif retry_on_failure:
+            # Check if we're within retry window and enough time has passed since last attempt
+            time_for_retry = (
+                now_bangkok.time().minute == 0 and  # Only retry on the hour
+                last_failed_retry_datetime is not None and
+                (now_bangkok - last_failed_retry_datetime) >= RETRY_INTERVAL
+            )
+            
+            # Check if we're still before the retry cutoff time
+            within_retry_window = now_bangkok < retry_end_time
+            
+            if time_for_retry and within_retry_window:
+                log_info(f"Retrying extraction at {now_bangkok.strftime('%H:%M')}...")
+                success = run_report()
+                if success:
+                    last_run_date = current_date
+                    retry_on_failure = False
+                    log_success("Retry attempt completed successfully")
+                else:
+                    last_failed_retry_datetime = now_bangkok
+                    log_warning("Retry attempt failed. Will try again in one hour.")
+            
+            # If we've passed the retry window end time, stop retrying until next day
+            elif now_bangkok >= retry_end_time:
+                log_warning(f"Maximum retry window reached (after {RETRY_END_HOUR:02d}:{RETRY_END_MINUTE:02d}). Will not retry until next scheduled run.")
                 retry_on_failure = False
-            else:
-                last_failed_retry_hour = hour
-            # If it's after 09:00, stop retrying until the next day
-        elif retry_on_failure and hour > 9:
-            log_warning("Maximum retry window reached (after 09:00). Will not retry until next scheduled day.")
-            retry_on_failure = False
 
-        log_debug("Waiting for next run...")
-        time.sleep(30)
+        log_debug(f"Current time: {now_bangkok.strftime('%Y-%m-%d %H:%M:%S')} - Waiting for next check...")
+        time_module.sleep(15)

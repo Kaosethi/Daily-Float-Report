@@ -1,4 +1,43 @@
+# Environment variables and secrets
 .env
-venv 
-__pycache__
+*.env
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Project-specific files
 vas_report_table.png
+downloads/
+
+# Log files
+logs/
+*.log
+
+# Test cache & coverage reports
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db

@@ -109,7 +109,7 @@ def login_vas():
                     WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, ".//i[contains(@class, 'fa-file-o')]") ))
                     download_icon.click()
                     downloaded = True
-                    log_info("⏳ Downloading report...")
+                    log_info("Downloading report...")
                     break
             except Exception as e:
                 continue
