@@ -11,6 +11,9 @@ import schedule
 import time
 from datetime import datetime, timedelta
 import pytz
+import logging
+# Import our custom logger
+from logger_config import log_info, log_debug, log_success, log_error, log_warning, log_wait
 
 # Import the real extraction functions
 from main import login_and_test_v2
@@ -34,23 +37,23 @@ def run_report():
     import pytz
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
 
-    print("Extracting V2 balance...")
+    log_info("Extracting V2 balance...")
     V2_balance = safe_float(login_and_test_v2())
     V2_time = datetime.now(BANGKOK_TZ) if V2_balance is not None else None
     if V2_balance is not None:
-        print(f"[OK] Extracted V2 Balance: {V2_balance:,.2f} THB at {V2_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        log_success(f"Extracted V2 Balance: {V2_balance:,.2f} THB at {V2_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
-    print("Extracting VAS balance...")
+    log_info("Extracting VAS balance...")
     VAS_balance = safe_float(login_vas())
     VAS_time = datetime.now(BANGKOK_TZ) if VAS_balance is not None else None
     if VAS_balance is not None:
-        print(f"[OK] Extracted VAS Balance: {VAS_balance:,.2f} THB at {VAS_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        log_success(f"Extracted VAS Balance: {VAS_balance:,.2f} THB at {VAS_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
-    print("Extracting CIMB balance...")
+    log_info("Extracting CIMB balance...")
     CIMB_balance = safe_float(login_and_get_cimb_balance())
     CIMB_time = datetime.now(BANGKOK_TZ) if CIMB_balance is not None else None
     if CIMB_balance is not None:
-        print(f"[OK] Extracted CIMB Balance: {CIMB_balance:,.2f} THB at {CIMB_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+        log_success(f"Extracted CIMB Balance: {CIMB_balance:,.2f} THB at {CIMB_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
     # Use a single report generated timestamp for the email (Asia/Bangkok time)
     report_generated_time = datetime.now(BANGKOK_TZ)
@@ -117,7 +120,8 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
 
     html_report += '</body></html>'
 
-    print(report)
+    log_info("Report generated:")
+    logging.info(report)
 
     # --- Send email via SendGrid ---
     # First, check if all balances were successfully retrieved
@@ -134,15 +138,15 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
             )
             try:
                 response = sg.send(message)
-                print(f"[OK] Email sent! Status code: {response.status_code}")
+                log_success(f"Email sent! Status code: {response.status_code}")
             except Exception as e:
-                print(f"[ERROR] Failed to send email: {e}")
+                log_error(f"Failed to send email: {e}")
         else:
             # Credentials missing, so email cannot be sent
-            print("[ERROR] SendGrid credentials not set. Email not sent due to missing credentials.")
+            log_error("SendGrid credentials not set. Email not sent due to missing credentials.")
     else:
         # One or more balances are missing, so email will not be sent
-        print("[ERROR] One or more balances missing. Email not sent due to incomplete data.")
+        log_error("One or more balances missing. Email not sent due to incomplete data.")
 
     # --- Clean up downloads directory ---
     import glob
@@ -150,9 +154,9 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
     for file_path in glob.glob(os.path.join(downloads_dir, "*")):
         try:
             os.remove(file_path)
-            print(f"[OK] Deleted: {file_path}")
+            log_success(f"Deleted: {file_path}")
         except Exception as e:
-            print(f"[ERROR] Could not delete {file_path}: {e}")
+            log_error(f"Could not delete {file_path}: {e}")
 
     return all_balances_ok
 
@@ -160,7 +164,7 @@ if __name__ == "__main__":
     # --- Restore this code for real scheduling
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
-    print("Scheduler started. Waiting for next run at 02:00 Asia/Bangkok time...")
+    log_info("Scheduler started. Waiting for next run at 10:00 Asia/Bangkok time...")
     last_run_date = None
     last_failed_retry_hour = None
     retry_on_failure = False
@@ -178,10 +182,11 @@ if __name__ == "__main__":
             else:
                 retry_on_failure = True
                 last_failed_retry_hour = hour
+                log_warning(f"Report run failed. Will retry on the next hour.")
 
         # Retry on the hour if previous run failed, but only up to and including 09:00
         elif retry_on_failure and minute == 0 and last_failed_retry_hour != hour and 2 < hour <= 9:
-            print(f"Retrying extraction at {hour:02d}:00...")
+            log_info(f"Retrying extraction at {hour:02d}:00...")
             success = run_report()
             if success:
                 last_run_date = now_bangkok.date()
@@ -190,8 +195,8 @@ if __name__ == "__main__":
                 last_failed_retry_hour = hour
             # If it's after 09:00, stop retrying until the next day
         elif retry_on_failure and hour > 9:
-            print("Maximum retry window reached (after 09:00). Will not retry until next scheduled day.")
+            log_warning("Maximum retry window reached (after 09:00). Will not retry until next scheduled day.")
             retry_on_failure = False
 
-        print("Waiting for next run...")
+        log_debug("Waiting for next run...")
         time.sleep(30)

@@ -4,6 +4,8 @@ from selenium.webdriver.chrome.options import Options
 import time
 import os
 from dotenv import load_dotenv
+# Import our custom logger
+from logger_config import log_info, log_debug, log_success, log_error, log_warning, log_wait
 
 # Load credentials from .env file
 load_dotenv()
@@ -22,15 +24,15 @@ def setup_driver():
 def login_and_test_v2():
     driver = setup_driver()
     try:
-        print("Opening browser and navigating to login page...")
+        log_info("Opening browser and navigating to login page...")
         driver.get("https://v2.ipps.co.th/agents/login")
         time.sleep(2)
 
-        print("Filling in login credentials...")
+        log_info("Filling in login credentials...")
         driver.find_element(By.ID, "email").send_keys(USERNAME)
         driver.find_element(By.ID, "password").send_keys(PASSWORD)
 
-        print("Clicking login button...")
+        log_info("Clicking login button...")
         driver.find_element(By.XPATH, "//button[@type='submit' and contains(., 'Login')]").click()
         time.sleep(3)
 
@@ -44,11 +46,11 @@ def login_and_test_v2():
         balance_str = text.replace("Balance:", "").replace("THB", "").strip()
         balance_value = float(balance_str)
 
-        print(f"✅ Extracted E-Money Balance: {balance_value} THB")
+        log_success(f"Extracted E-Money Balance: {balance_value} THB")
         return balance_value  # <-- Return the value
 
     except Exception as e:
-        print("❌ Error during login or scraping:", e)
+        log_error(f"Error during login or scraping: {e}")
         return None
     finally:
         driver.quit()

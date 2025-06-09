@@ -9,6 +9,8 @@ import os
 from dotenv import load_dotenv
 import pandas as pd  # For parsing Excel
 import glob  # For finding downloaded files
+# Import our custom logger
+from logger_config import log_info, log_debug, log_success, log_error, log_warning, log_wait
 
 # Load environment variables
 load_dotenv()
@@ -50,7 +52,7 @@ def login_vas():
     os.makedirs(download_dir, exist_ok=True)
     driver = setup_driver(download_dir=download_dir)
     try:
-        print("Navigating to VAS login...")
+        log_info("Navigating to VAS login...")
         driver.get("https://va-vasbo.ipps.co.th/vas-web/auth/login")
         time.sleep(2)
 
@@ -59,13 +61,13 @@ def login_vas():
         driver.find_element(By.ID, "buttonforshow").click()
         time.sleep(3)
 
-        print("Redirecting to report page...")
+        log_info("Redirecting to report page...")
         driver.get("https://va-vasbo.ipps.co.th/vas-web/report/amc_all_report/")
         time.sleep(2)
 
         # Select previous day's date
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%d/%m/%Y")
-        print(f"Selecting report date: {yesterday}")
+        log_info(f"Selecting report date: {yesterday}")
 
         date_input = driver.find_element(By.ID, "businessDate")
         driver.execute_script(f"arguments[0].value = '{yesterday}'", date_input)
@@ -73,13 +75,13 @@ def login_vas():
         # Click Search
         search_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Search')]")
         search_button.click()
-        print("✅ Search triggered for previous day.")
+        log_success("Search triggered for previous day.")
 
         # Wait for the result to appear
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, "//td[contains(text(), '.csv') or contains(text(), 'Report')]") )
         )
-        print("✅ Report result appeared (next step: download).")
+        log_success("Report result appeared (next step: download).")
 
         # Step 1: Build expected filename
         file_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
@@ -89,9 +91,9 @@ def login_vas():
         rows = driver.find_elements(By.XPATH, "//table//tr")
 
         # DEBUG: Print all table row texts
-        print("DEBUG: Table rows found:")
+        log_debug("Table rows found:")
         for idx, row in enumerate(rows):
-            print(f"Row {idx}: {row.text}")
+            log_debug(f"Row {idx}: {row.text}")
         # Save screenshot for visual debug
         driver.save_screenshot('vas_report_table.png')
 
@@ -101,19 +103,19 @@ def login_vas():
         for row in rows:
             try:
                 if ("UserAcccountStatReport" in row.text and file_date in row.text):
-                    print(f"✅ Found row with report (partial match): {row.text}")
+                    log_success(f"Found row with report (partial match): {row.text}")
                     # Find the download icon and click it, wait until clickable
                     download_icon = row.find_element(By.XPATH, ".//i[contains(@class, 'fa-file-o')]")
                     WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.XPATH, ".//i[contains(@class, 'fa-file-o')]") ))
                     download_icon.click()
                     downloaded = True
-                    print("⏳ Downloading report...")
+                    log_info("⏳ Downloading report...")
                     break
             except Exception as e:
                 continue
         # Only print and return error if NO row was found
         if not downloaded:
-            print(f"❌ Could not find report row for {expected_filename}")
+            log_error(f"Could not find report row for {expected_filename}")
             driver.quit()
             return None
 
@@ -124,12 +126,12 @@ def login_vas():
         while waited < timeout:
             # Check if file exists and is not a .crdownload
             if os.path.exists(downloaded_file_path) and not any(glob.glob(downloaded_file_path + ".crdownload")):
-                print(f"✅ Download complete: {downloaded_file_path}")
+                log_success(f"Download complete: {downloaded_file_path}")
                 break
             time.sleep(1)
             waited += 1
         else:
-            print(f"❌ Download timed out for {expected_filename}")
+            log_error(f"Download timed out for {expected_filename}")
             driver.quit()
             return None
 
@@ -137,10 +139,10 @@ def login_vas():
         try:
             df = pd.read_excel(downloaded_file_path, header=None)  # Read without headers for fixed cell
             value = df.iloc[14, 1]  # Row 15 (index 14), Column B (index 1)
-            print(f"✅ Extracted VAS Balance: {value} THB")
+            log_success(f"Extracted VAS Balance: {value} THB")
             return value
         except Exception as e:
-            print(f"❌ Error parsing Excel file: {e}")
+            log_error(f"Error parsing Excel file: {e}")
             return None
 
     finally:
