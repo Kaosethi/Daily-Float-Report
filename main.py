@@ -11,6 +11,9 @@ import re
 import random
 from dotenv import load_dotenv
 
+# Import logging functionality
+from logger import logger, log_info, log_error, log_warning, log_success, log_step, log_function
+
 # Load credentials from .env file
 load_dotenv()
 USERNAME = os.getenv("V2_USERNAME")
@@ -66,21 +69,23 @@ def setup_driver():
     return driver
 
 # Login to V2 system
+@log_function
 def login_and_test_v2():
+    log_step("V2 System Login")
     driver = setup_driver()
     try:
-        print("Opening browser and navigating to login page...")
+        log_info("Opening browser and navigating to login page...")
         driver.get("https://v2.ipps.co.th/agents/login")
         
         # Use WebDriverWait for login form to load
         wait = WebDriverWait(driver, 15)  # Increased timeout
-        print("Waiting for login form to load...")
+        log_info("Waiting for login form to load...")
         email_field = wait.until(EC.presence_of_element_located((By.ID, "email")))
         
         # Add a short delay before starting to type (like a human)
         time.sleep(1.5)
         
-        print("Filling in login credentials...")
+        log_info("Filling in login credentials...")
         # Type like a human - character by character with random delays
         for char in USERNAME:
             email_field.send_keys(char)
@@ -99,7 +104,7 @@ def login_and_test_v2():
         # Short pause before clicking login (like a human would)
         time.sleep(1)
 
-        print("Clicking login button...")
+        log_info("Clicking login button...")
         login_button = wait.until(
             EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' and contains(., 'Login')]")))
             
@@ -118,30 +123,30 @@ def login_and_test_v2():
             if sweet_alerts:
                 for alert in sweet_alerts:
                     alert_text = alert.text
-                    print(f"⚠️ SweetAlert detected: {alert_text}")
+                    log_warning(f"SweetAlert detected: {alert_text}")
                     # If it's a common authentication error or bot detection error, print it
                     if any(keyword in alert_text.lower() for keyword in 
                            ["invalid", "incorrect", "failed", "error", "bot", "captcha", "automated"]):
-                        print(f"❌ Login error detected: {alert_text}")
+                        log_error(f"Login error detected: {alert_text}")
             
             # Check for other visible error messages
             error_messages = driver.find_elements(By.XPATH, "//*[contains(@class, 'error') or contains(@class, 'alert')]")
             for error in error_messages:
                 if error.is_displayed() and error.text.strip():
-                    print(f"❌ Error message found: {error.text}")
+                    log_error(f"Error message found: {error.text}")
         except Exception as e:
-            print(f"Error checking for alerts: {e}")
+            log_error(f"Error checking for alerts: {e}")
             # Continue anyway
         
         # Wait for dashboard to load - check for multiple indicators with longer timeout
-        print("Waiting for dashboard to load...")
+        log_info("Waiting for dashboard to load...")
         
         # Increase timeout for cloud environments
         long_wait = WebDriverWait(driver, 30)  # 30 seconds timeout
         dashboard_loaded = False
         
-        # Print current URL for debugging
-        print(f"Current URL after login attempt: {driver.current_url}")
+        # Log current URL for debugging
+        log_info(f"Current URL after login attempt: {driver.current_url}")
         
         # Try multiple strategies to detect dashboard
         dashboard_indicators = [
@@ -156,50 +161,50 @@ def login_and_test_v2():
         for indicator in dashboard_indicators:
             try:
                 if indicator["check"]():
-                    print(f"✅ Dashboard detected via {indicator['desc']}")
+                    log_success(f"Dashboard detected via {indicator['desc']}")
                     dashboard_loaded = True
                     break
             except Exception as e:
-                print(f"Could not check {indicator['desc']}: {e}")
+                log_warning(f"Could not check {indicator['desc']}: {e}")
         
         # If no indicators were found, try waiting for any of them
         if not dashboard_loaded:
             try:
-                print("No immediate dashboard indicators found. Waiting up to 30 seconds for any to appear...")
+                log_info("No immediate dashboard indicators found. Waiting up to 30 seconds for any to appear...")
                 # Try to wait for any dashboard element
                 long_wait.until(
-                    EC.presence_of_element_located((By.XPATH, "//a[contains(., 'Logout')]|//div[contains(@class, 'sidebar')]|//div[contains(text(), 'E-Money')]|//div[contains(text(), 'Balance')]")))                
-                print("✅ Dashboard eventually loaded after waiting")
+                    EC.presence_of_element_located((By.XPATH, "//a[contains(., 'Logout')]|//div[contains(@class, 'sidebar')]|//div[contains(text(), 'E-Money')]|//div[contains(text(), 'Balance')]")))
+                log_success("Dashboard eventually loaded after waiting")
                 dashboard_loaded = True
             except TimeoutException:
-                print("❌ Dashboard failed to load after extended wait")
+                log_error("Dashboard failed to load after extended wait")
         
         if not dashboard_loaded:
-            print("❌ Could not verify dashboard loaded. Page source preview:")
+            log_error("Could not verify dashboard loaded. Page source preview:")
             # Print a sample of the page source for debugging
             page_source = driver.page_source
-            print(page_source[:500] + "... [truncated]")
+            log_error(page_source[:500] + "... [truncated]")
             
             # Try to continue anyway - maybe we're on the dashboard but couldn't detect it
-            print("Attempting to continue despite dashboard detection failure...")
+            log_warning("Attempting to continue despite dashboard detection failure...")
         else:
-            print("Dashboard successfully detected, proceeding to extract balance")
+            log_success("Dashboard successfully detected, proceeding to extract balance")
 
         # Get E-Money balance using multiple strategies
-        print("Attempting to extract E-Money balance...")
+        log_info("Attempting to extract E-Money balance...")
         balance_value = None
         
         # Screenshot functionality removed as requested
                 
-        # Print page structure for debugging
-        print("\nDumping page structure for debugging:")
+        # Log page structure for debugging
+        log_info("Dumping page structure for debugging:")
         try:
             elements = driver.find_elements(By.XPATH, "//div[contains(text(), 'E-Money')]|//div[contains(text(), 'Balance')]")
-            print(f"Found {len(elements)} relevant elements:")
+            log_info(f"Found {len(elements)} relevant elements:")
             for i, elem in enumerate(elements[:10]):  # Limit to first 10 for brevity
-                print(f"  Element {i}: '{elem.text}', tag={elem.tag_name}, class={elem.get_attribute('class')}")
+                log_info(f"  Element {i}: '{elem.text}', tag={elem.tag_name}, class={elem.get_attribute('class')}")
         except Exception as e:
-            print(f"❌ Error dumping page structure: {e}")
+            log_error(f"Error dumping page structure: {e}")
         
         # Multiple extraction strategies
         strategies = [
@@ -251,12 +256,12 @@ def login_and_test_v2():
         for strategy_fn in strategies:
             strategy = strategy_fn()
             try:
-                print(f"Trying {strategy['name']} strategy...")
+                log_info(f"Trying {strategy['name']} strategy...")
                 balance_element = strategy['finder']()
                 
                 if balance_element:
                     text = balance_element.text.strip()
-                    print(f"Found text: '{text}'")
+                    log_info(f"Found text: '{text}'")
                     
                     # Extract number using regex pattern for any number with possible decimal point
                     matches = re.findall(r'[\d,]+\.?\d*', text)
@@ -264,24 +269,33 @@ def login_and_test_v2():
                         # Take the first match and clean it
                         balance_str = matches[0].replace(',', '')
                         balance_value = float(balance_str)
-                        print(f"✅ Extracted E-Money Balance: {balance_value} THB using {strategy['name']}")
+                        log_success(f"Extracted E-Money Balance: {balance_value} THB using {strategy['name']}")
                         return balance_value
                     else:
-                        print(f"❌ Could not extract number from '{text}'")
+                        log_error(f"Could not extract number from '{text}'")
             except (NoSuchElementException, TimeoutException) as e:
-                print(f"❌ {strategy['name']} failed: {e.__class__.__name__}")
+                log_warning(f"{strategy['name']} failed: {e.__class__.__name__}")
             except Exception as e:
-                print(f"❌ Unexpected error with {strategy['name']}: {e}")
+                log_error(f"Unexpected error with {strategy['name']}: {e}")
                 
-        print("All extraction strategies failed")
+        log_error("All extraction strategies failed")
         return None
 
     except Exception as e:
-        print("❌ Error during login or scraping:", e)
+        log_error(f"Error during login or scraping: {e}", exc_info=True)
         return None
     finally:
         driver.quit()
 
 # Run the test
 if __name__ == "__main__":
-    login_and_test_v2()
+    log_step("Starting V2 balance extraction")
+    
+    # Try headless mode first
+    balance = login_and_test_v2()
+    
+    # Report final result
+    if balance is not None:
+        log_success(f"Final result: E-Money Balance = {balance} THB")
+    else:
+        log_error("Failed to extract E-Money balance after all attempts")

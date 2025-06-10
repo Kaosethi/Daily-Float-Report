@@ -1,0 +1,5 @@
+[2025-06-10 11:21:21][    INFO][logger:113] ==== STARTING STEP: Starting script execution ====
+[2025-06-10 11:21:21][    INFO][logger:105] ℹ️ System initialized
+[2025-06-10 11:21:22][    INFO][logger:101] ✅ SUCCESS: Data processed successfully
+[2025-06-10 11:21:22][    INFO][logging_example:39] Processing results
+[2025-06-10 11:21:22][ WARNING][logging_example:42] Some files might be missing

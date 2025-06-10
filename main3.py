@@ -7,6 +7,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+# Import logging functionality
+from logger import logger, log_info, log_error, log_warning, log_success, log_step, log_function
+
 # Load environment variables
 load_dotenv()
 CIMB_COMPANY_ID = os.getenv("CIMB_COMPANY_ID")
@@ -14,7 +17,9 @@ CIMB_USERNAME = os.getenv("CIMB_USERNAME")
 CIMB_PASSWORD = os.getenv("CIMB_PASSWORD")
 
 # Setup Chrome WebDriver (reuse logic from main2.py)
+@log_function
 def setup_driver(download_dir=None):
+    log_info("Setting up Chrome WebDriver for CIMB")
     options = Options()
     options.add_argument("--headless")  # Enable headless mode
     options.add_argument("--no-sandbox")
@@ -36,64 +41,67 @@ def setup_driver(download_dir=None):
     return webdriver.Chrome(options=options)
 
 # CIMB login and balance extraction (stub - update selectors as needed)
+@log_function
 def login_and_get_cimb_balance():
+    log_step("CIMB Login and Balance Extraction")
     driver = setup_driver()
     try:
-        print("Navigating to CIMB login page...")
+        log_info("Navigating to CIMB login page...")
         driver.get("https://www.bizchannel.cimbthai.com/corp/common2/login.do?action=loginRequest")
         time.sleep(2)
-        print("Page title after loading login page:", driver.title)
-        print("Current URL:", driver.current_url)
+        log_info(f"Page title after loading login page: {driver.title}")
+        log_info(f"Current URL: {driver.current_url}")
 
-        print("\n[INFO] You may now manually press LOGOUT in the browser. Wait at least 10 seconds after the dashboard appears before logging out to ensure all debug info is printed.")
+        log_info("You may now manually press LOGOUT in the browser. Wait at least 10 seconds after the dashboard appears before logging out to ensure all debug info is printed.")
 
         # Fill in CIMB login form with explicit error handling
         try:
             company_field = driver.find_element(By.ID, "corpId")
-            print("Found company ID field.")
+            log_info("Found company ID field")
         except Exception as e:
-            print(" Could not find company ID field (corpId):", e)
+            log_error(f"Could not find company ID field (corpId): {e}")
             return
         try:
             user_field = driver.find_element(By.ID, "userName")
-            print("Found username field.")
+            log_info("Found username field")
         except Exception as e:
-            print(" Could not find username field (userName):", e)
+            log_error(f"Could not find username field (userName): {e}")
             return
         try:
             password_field = driver.find_element(By.ID, "passwordEncryption")
-            print("Found password field.")
+            log_info("Found password field")
         except Exception as e:
-            print(" Could not find password field (passwordEncryption):", e)
+            log_error(f"Could not find password field (passwordEncryption): {e}")
             return
         try:
             login_button = driver.find_element(By.NAME, "submit1")
-            print("Found login button.")
+            log_info("Found login button")
         except Exception as e:
-            print(" Could not find login button (submit1):", e)
+            log_error(f"Could not find login button (submit1): {e}")
             return
         # Now fill and submit
+        log_info("Filling login credentials...")
         company_field.send_keys(CIMB_COMPANY_ID)
         user_field.send_keys(CIMB_USERNAME)
         password_field.send_keys(CIMB_PASSWORD)
+        log_info("Submitting login form...")
         login_button.click()
-        print("Login submitted, waiting for dashboard...")
-        print("Login submitted, waiting for dashboard to load...")
+        log_info("Login submitted, waiting for dashboard to load...")
         try:
             # Wait for URL to change to 'returnMain'
             WebDriverWait(driver, 60).until(
                 EC.url_contains("returnMain")
             )
-            print(" URL changed to dashboard. Now waiting for frameset...")
+            log_success("URL changed to dashboard. Now waiting for frameset...")
             # Wait for menuFrame to appear
             WebDriverWait(driver, 60).until(
                 lambda d: len(d.find_elements(By.NAME, "menuFrame")) > 0
             )
-            print(" Frameset loaded, proceeding to frame navigation.")
-            print("[WAIT] Dashboard loaded. Waiting 5 seconds...")
+            log_info("Frameset loaded, proceeding to frame navigation")
+            log_info("Dashboard loaded. Waiting 5 seconds...")
             time.sleep(5)
-        except Exception:
-            print(" Dashboard did not load after login. Stopping.")
+        except Exception as e:
+            log_error(f"Dashboard did not load after login: {e}", exc_info=True)
             return None
 
         # --- Frame switching logic ---
@@ -102,36 +110,38 @@ def login_and_get_cimb_balance():
             # 1. Switch to menuFrame to click menu items
             driver.switch_to.default_content()
             driver.switch_to.frame("menuFrame")
-            print("[WAIT] Switched to menuFrame. Waiting 5 seconds...")
+            log_info("Switched to menuFrame. Waiting 5 seconds...")
             time.sleep(5)
             # Click 'Account Service & Information Management'
+            log_info("Finding Account Service menu...")
             menu_div = driver.find_element(By.XPATH, "//div[contains(text(), 'Account Service')]")
             menu_div.click()
-            print(" Clicked 'Account Service & Information Management' menu.")
-            print("[WAIT] Clicked Account Service & Information Management. Waiting 5 seconds...")
+            log_info("Clicked 'Account Service & Information Management' menu")
+            log_info("Waiting 5 seconds after clicking Account Service menu...")
             time.sleep(5)
-            # Print all <a> links in menuFrame after expanding menu
+            # Log all <a> links in menuFrame after expanding menu
             links = driver.find_elements(By.TAG_NAME, "a")
-            print("[DEBUG] Links in menuFrame after expanding menu:")
+            log_info("Links in menuFrame after expanding menu:")
             for idx, link in enumerate(links):
-                print(f"  Link {idx}: '{link.text.strip()}' | href={link.get_attribute('href')}")
+                log_info(f"  Link {idx}: '{link.text.strip()}' | href={link.get_attribute('href')}")
             # Click 'Account Summary' using its id
+            log_info("Finding Account Summary link...")
             account_summary_link = driver.find_element(By.ID, "subs8")
             account_summary_link.click()
-            print(" Clicked 'Account Summary' link.")
-            print("[WAIT] Clicked Account Summary. Waiting 10 seconds...")
+            log_success("Clicked 'Account Summary' link")
+            log_info("Waiting 10 seconds after clicking Account Summary...")
             time.sleep(10)
-        except Exception:
-            print(" Could not find or click the menu or Account Summary in menuFrame.")
+        except Exception as e:
+            log_error(f"Could not find or click the menu or Account Summary in menuFrame: {e}", exc_info=True)
         try:
             # 2. Switch to mainFrame to extract account and balance
             driver.switch_to.default_content()
             driver.switch_to.frame("mainFrame")
-            print("[WAIT] Switched to mainFrame. Printing all <a> elements for debug...")
+            log_info("Switched to mainFrame. Printing all <a> elements for debug...")
             links = driver.find_elements(By.TAG_NAME, "a")
             for idx, link in enumerate(links):
-                print(f"  Link {idx}: text='{link.text.strip()}', onclick='{link.get_attribute('onclick')}'")
-            print("[WAIT] Now waiting up to 60 seconds for balance element...")
+                log_info(f"  Link {idx}: text='{link.text.strip()}', onclick='{link.get_attribute('onclick')}'") 
+            log_info("Now waiting up to 60 seconds for balance element...")
             wait_start = time.time()
             acct_number = os.getenv("CIMB_ACCOUNT_NUMBER", "7013252356")
             cimb_balance = None
@@ -142,24 +152,24 @@ def login_and_get_cimb_balance():
                 for idx, link in enumerate(links):
                     if acct_number in link.text:
                         acct_idx = idx
-                        print(f"[INFO] Found account link at index {acct_idx}: {link.text}")
+                        log_info(f"Found account link at index {acct_idx}: {link.text}")
                         break
                 if acct_idx is not None and acct_idx + 1 < len(links):
                     balance_link = links[acct_idx + 1]
                     balance_text = balance_link.text.strip().replace(',', '')
                     try:
                         cimb_balance = float(balance_text)
-                        print(f"✅ Extracted CIMB Available Balance for {acct_number}: {cimb_balance} THB")
+                        log_success(f"Extracted CIMB Available Balance for {acct_number}: {cimb_balance} THB")
                     except Exception as e:
-                        print(f"❌ Could not parse balance '{balance_text}' as float: {e}")
+                        log_error(f"Could not parse balance '{balance_text}' as float: {e}")
                         error_occurred = True
-                    print("[WAIT] Extracted balance. Waiting 5 seconds...")
+                    log_info("Extracted balance. Waiting 5 seconds...")
                     time.sleep(5)
                 else:
-                    print(f"❌ Could not find account {acct_number} or its balance link.")
+                    log_error(f"Could not find account {acct_number} or its balance link.")
                     error_occurred = True
             except Exception as e:
-                print(f"❌ Error during extraction: {e}")
+                log_error(f"Error during extraction: {e}", exc_info=True)
                 error_occurred = True
             finally:
                 # Logout logic
@@ -169,39 +179,40 @@ def login_and_get_cimb_balance():
                         driver.switch_to.default_content()
                         if frame_name:
                             driver.switch_to.frame(frame_name)
-                        print(f"[LOGOUT] Searching for logout link in {frame_name or 'default content'}...")
+                        log_info(f"Searching for logout link in {frame_name or 'default content'}...")
                         logout_link = WebDriverWait(driver, 5).until(
                             EC.element_to_be_clickable((By.XPATH, "//a[contains(@href, 'action=logout') or @onclick='logout()']"))
                         )
                         logout_link.click()
-                        print(f"✅ Clicked logout link in {frame_name or 'default content'}.")
+                        log_success(f"Clicked logout link in {frame_name or 'default content'}")
                         # Wait for login page to reappear (by URL or login field)
                         driver.switch_to.default_content()
                         WebDriverWait(driver, 10).until(
                             EC.presence_of_element_located((By.ID, "corpId"))
                         )
-                        print("✅ Logout confirmed: Login page detected.")
+                        log_success("Logout confirmed: Login page detected")
                         logout_success = True
                         break
                     except Exception as e:
-                        print(f"[LOGOUT] Could not find/click logout link in {frame_name or 'default content'}: {e}")
+                        log_warning(f"Could not find/click logout link in {frame_name or 'default content'}: {e}")
                 if not logout_success:
-                    print("❌ WARNING: Logout could not be confirmed. Please check your session manually.")
+                    log_warning("Logout could not be confirmed. Please check your session manually.")
             if error_occurred:
                 return None
-        except Exception:
-            print("❌ Could not find or extract the account or balance in mainFrame.")
+        except Exception as e:
+            log_error(f"Could not find or extract the account or balance in mainFrame: {e}", exc_info=True)
         return cimb_balance
 
     except Exception as e:
-        print("❌ Error during CIMB login or scraping:", e)
+        log_error(f"Error during CIMB login or scraping: {e}", exc_info=True)
     finally:
         # Do NOT close the browser automatically so user can inspect manually
         pass
 
 if __name__ == "__main__":
+    log_step("Starting CIMB balance extraction process")
     balance = login_and_get_cimb_balance()
     if balance is not None:
-        print(f"\nCIMB Available Balance: {balance:,.2f} THB")
+        log_success(f"CIMB Available Balance: {balance:,.2f} THB")
     else:
-        print("\nNo CIMB balance found.")
+        log_error("No CIMB balance found")
