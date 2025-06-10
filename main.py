@@ -8,7 +8,6 @@ from selenium.webdriver.common.keys import Keys
 import time
 import os
 import re
-import random
 from dotenv import load_dotenv
 
 # Load credentials from .env file
@@ -46,6 +45,7 @@ def setup_driver():
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
     ]
+    import random
     options.add_argument(f"--user-agent={random.choice(user_agents)}")
     
     # Add headers to appear more legitimate
