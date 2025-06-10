@@ -4,9 +4,11 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.common.keys import Keys
 import time
 import os
 import re
+import random
 from dotenv import load_dotenv
 
 # Load credentials from .env file
@@ -17,22 +19,50 @@ PASSWORD = os.getenv("V2_PASSWORD")
 # Setup Chrome WebDriver
 def setup_driver():
     options = Options()
+    
+    # For cloud environments, you can temporarily disable headless mode for debugging
+    # Uncomment the line below in cloud and comment out the headless line if needed
     options.add_argument("--headless")  # Enable headless mode
+    
+    # Basic settings
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # Add additional options to help with cloud environments
+    
+    # Anti-detection measures
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    
+    # Mimic real browser
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--start-maximized")
     options.add_argument("--ignore-certificate-errors")
-    # Add user-agent to make it look more like a real browser
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36")
+    
+    # More realistic user agents (rotate through these options)
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+    ]
+    options.add_argument(f"--user-agent={random.choice(user_agents)}")
+    
+    # Add headers to appear more legitimate
+    options.add_argument("--disable-features=IsolateOrigins,site-per-process")
     
     # Create and return the driver
     driver = webdriver.Chrome(options=options)
+    
     # Set an implicit wait to help with element discovery
     driver.implicitly_wait(10)
+    
+    # Execute stealth JS to further avoid detection
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    driver.execute_script("window.navigator.chrome = {runtime: {}}")
+    driver.execute_script("Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})")
+    driver.execute_script("Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})")
+    
     return driver
 
 # Login to V2 system
@@ -43,18 +73,65 @@ def login_and_test_v2():
         driver.get("https://v2.ipps.co.th/agents/login")
         
         # Use WebDriverWait for login form to load
-        wait = WebDriverWait(driver, 10)
+        wait = WebDriverWait(driver, 15)  # Increased timeout
         print("Waiting for login form to load...")
         email_field = wait.until(EC.presence_of_element_located((By.ID, "email")))
         
+        # Add a short delay before starting to type (like a human)
+        time.sleep(1.5)
+        
         print("Filling in login credentials...")
-        email_field.send_keys(USERNAME)
-        driver.find_element(By.ID, "password").send_keys(PASSWORD)
+        # Type like a human - character by character with random delays
+        for char in USERNAME:
+            email_field.send_keys(char)
+            time.sleep(random.uniform(0.1, 0.3))  # Random delay between keystrokes
+            
+        # Tab to password field like a human would
+        email_field.send_keys(Keys.TAB)
+        time.sleep(0.5)
+        
+        # Type password with human-like timing
+        password_field = driver.switch_to.active_element
+        for char in PASSWORD:
+            password_field.send_keys(char)
+            time.sleep(random.uniform(0.1, 0.3))
+            
+        # Short pause before clicking login (like a human would)
+        time.sleep(1)
 
         print("Clicking login button...")
         login_button = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' and contains(., 'Login')]")))  
+            EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' and contains(., 'Login')]")))
+            
+        # Hover before clicking (more human-like)
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", login_button)
+        time.sleep(0.7)
+            
+        # Click the button
         login_button.click()
+        
+        # Check for SweetAlert errors after login attempt
+        time.sleep(2)  # Short delay to allow alerts to appear
+        try:
+            # Check for SweetAlert dialogs which often indicate errors
+            sweet_alerts = driver.find_elements(By.CLASS_NAME, "swal2-popup")
+            if sweet_alerts:
+                for alert in sweet_alerts:
+                    alert_text = alert.text
+                    print(f"⚠️ SweetAlert detected: {alert_text}")
+                    # If it's a common authentication error or bot detection error, print it
+                    if any(keyword in alert_text.lower() for keyword in 
+                           ["invalid", "incorrect", "failed", "error", "bot", "captcha", "automated"]):
+                        print(f"❌ Login error detected: {alert_text}")
+            
+            # Check for other visible error messages
+            error_messages = driver.find_elements(By.XPATH, "//*[contains(@class, 'error') or contains(@class, 'alert')]")
+            for error in error_messages:
+                if error.is_displayed() and error.text.strip():
+                    print(f"❌ Error message found: {error.text}")
+        except Exception as e:
+            print(f"Error checking for alerts: {e}")
+            # Continue anyway
         
         # Wait for dashboard to load - check for multiple indicators with longer timeout
         print("Waiting for dashboard to load...")
