@@ -170,7 +170,7 @@ if __name__ == "__main__":
         minute = now_bangkok.minute
 
         # Normal daily run at 02:00
-        if hour == 10 and minute == 25 and last_run_date != now_bangkok.date():
+        if hour == 10 and minute == 4 and last_run_date != now_bangkok.date():
             success = run_report()
             if success:
                 last_run_date = now_bangkok.date()
