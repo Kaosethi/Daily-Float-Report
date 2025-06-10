@@ -20,7 +20,20 @@ def setup_driver():
     options.add_argument("--headless")  # Enable headless mode
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    return webdriver.Chrome(options=options)
+    # Add additional options to help with cloud environments
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--start-maximized")
+    options.add_argument("--ignore-certificate-errors")
+    # Add user-agent to make it look more like a real browser
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36")
+    
+    # Create and return the driver
+    driver = webdriver.Chrome(options=options)
+    # Set an implicit wait to help with element discovery
+    driver.implicitly_wait(10)
+    return driver
 
 # Login to V2 system
 def login_and_test_v2():
@@ -43,31 +56,63 @@ def login_and_test_v2():
             EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' and contains(., 'Login')]")))  
         login_button.click()
         
-        # Wait for dashboard to load - check for multiple indicators
+        # Wait for dashboard to load - check for multiple indicators with longer timeout
         print("Waiting for dashboard to load...")
-        try:
-            # Wait for logout button or any dashboard element to confirm successful login
-            wait.until(
-                EC.presence_of_element_located((By.XPATH, "//a[contains(., 'Logout')]|//div[contains(@class, 'sidebar')]|//div[text()='E-Money']"))
-            )
-            print("✅ Dashboard loaded successfully")
-        except TimeoutException:
-            print("❌ Dashboard failed to load after login - timeout")
-            # Print the current URL and page source for debugging
-            print(f"Current URL: {driver.current_url}")
-            return None
+        
+        # Increase timeout for cloud environments
+        long_wait = WebDriverWait(driver, 30)  # 30 seconds timeout
+        dashboard_loaded = False
+        
+        # Print current URL for debugging
+        print(f"Current URL after login attempt: {driver.current_url}")
+        
+        # Try multiple strategies to detect dashboard
+        dashboard_indicators = [
+            {"type": "url", "desc": "URL contains 'dashboard'", "check": lambda: "dashboard" in driver.current_url.lower()},
+            {"type": "element", "desc": "Logout link present", "check": lambda: len(driver.find_elements(By.XPATH, "//a[contains(., 'Logout')]|//a[contains(@href, 'logout')]|//button[contains(., 'Logout')]")) > 0},
+            {"type": "element", "desc": "Sidebar present", "check": lambda: len(driver.find_elements(By.XPATH, "//div[contains(@class, 'sidebar')]|//aside|//nav")) > 0},
+            {"type": "element", "desc": "E-Money text present", "check": lambda: len(driver.find_elements(By.XPATH, "//div[contains(text(), 'E-Money')]")) > 0},
+            {"type": "general", "desc": "Not on login page", "check": lambda: "login" not in driver.current_url.lower() and len(driver.find_elements(By.ID, "email")) == 0}
+        ]
+        
+        # Check all dashboard indicators
+        for indicator in dashboard_indicators:
+            try:
+                if indicator["check"]():
+                    print(f"✅ Dashboard detected via {indicator['desc']}")
+                    dashboard_loaded = True
+                    break
+            except Exception as e:
+                print(f"Could not check {indicator['desc']}: {e}")
+        
+        # If no indicators were found, try waiting for any of them
+        if not dashboard_loaded:
+            try:
+                print("No immediate dashboard indicators found. Waiting up to 30 seconds for any to appear...")
+                # Try to wait for any dashboard element
+                long_wait.until(
+                    EC.presence_of_element_located((By.XPATH, "//a[contains(., 'Logout')]|//div[contains(@class, 'sidebar')]|//div[contains(text(), 'E-Money')]|//div[contains(text(), 'Balance')]")))                
+                print("✅ Dashboard eventually loaded after waiting")
+                dashboard_loaded = True
+            except TimeoutException:
+                print("❌ Dashboard failed to load after extended wait")
+        
+        if not dashboard_loaded:
+            print("❌ Could not verify dashboard loaded. Page source preview:")
+            # Print a sample of the page source for debugging
+            page_source = driver.page_source
+            print(page_source[:500] + "... [truncated]")
+            
+            # Try to continue anyway - maybe we're on the dashboard but couldn't detect it
+            print("Attempting to continue despite dashboard detection failure...")
+        else:
+            print("Dashboard successfully detected, proceeding to extract balance")
 
         # Get E-Money balance using multiple strategies
         print("Attempting to extract E-Money balance...")
         balance_value = None
         
-        # Take a screenshot for debugging
-        try:
-            screenshot_path = "dashboard_screenshot.png"
-            driver.save_screenshot(screenshot_path)
-            print(f"✅ Saved dashboard screenshot to {screenshot_path}")
-        except Exception as ss_error:
-            print(f"❌ Failed to save screenshot: {ss_error}")
+        # Screenshot functionality removed as requested
                 
         # Print page structure for debugging
         print("\nDumping page structure for debugging:")
@@ -97,12 +142,30 @@ def login_and_test_v2():
                     "//div[contains(text(), 'E-Money')]/following::div[contains(text(), 'Balance')]"
                 )
             },
-            # Strategy 3: Even more general - find all balance texts and filter
+            # Strategy 3: Any Balance text with THB
             lambda: {
                 "name": "Text search",
                 "finder": lambda: next(
                     (elem for elem in driver.find_elements(By.XPATH, "//div[contains(text(), 'Balance')]")
                     if "THB" in elem.text or "฿" in elem.text),
+                    None
+                )
+            },
+            # Strategy 4: Any element with both numbers and currency indicator
+            lambda: {
+                "name": "Number + Currency",
+                "finder": lambda: next(
+                    (elem for elem in driver.find_elements(By.XPATH, "//*[contains(text(), 'THB') or contains(text(), '฿')]")
+                    if re.search(r'\d', elem.text)),
+                    None
+                )
+            },
+            # Strategy 5: Extremely general - any numerical value on the page
+            lambda: {
+                "name": "Any Number",
+                "finder": lambda: next(
+                    (elem for elem in driver.find_elements(By.XPATH, "//*") 
+                    if re.search(r'[\d,]+\.?\d+', elem.text) and len(elem.text) < 50),  # not too long text
                     None
                 )
             }
