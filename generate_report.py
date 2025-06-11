@@ -176,12 +176,18 @@ if __name__ == "__main__":
     now_bangkok = datetime.now(BANGKOK_TZ)
     
     log_step("Scheduler started")
-    log_info("Waiting for next run at 00:15 Asia/Bangkok time...")
+    log_info("Waiting for next run at 11:00 Asia/Bangkok time...")
     log_info(f"Current date/time: {now_bangkok.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # Initialize to yesterday's date so it will run today if in the correct time window
     yesterday = (now_bangkok - timedelta(days=1)).date()
-    last_run_date = yesterday if now_bangkok.hour > 0 or (now_bangkok.hour == 0 and now_bangkok.minute >= 17) else None
+    
+    # If current time is after today's run window (11:00-11:01), set last_run_date to today
+    # Otherwise, set to yesterday to allow today's run
+    if now_bangkok.hour > 11 or (now_bangkok.hour == 11 and now_bangkok.minute >= 2):
+        last_run_date = now_bangkok.date()  # Already ran today
+    else:
+        last_run_date = yesterday  # Allow run today
     log_info(f"Initialized last_run_date to: {last_run_date}")
     
     last_failed_retry_hour = None
@@ -195,12 +201,12 @@ if __name__ == "__main__":
         if minute % 5 == 0 and now_bangkok.second < 2:
             log_info(f"Scheduler check: Current time is {hour:02d}:{minute:02d}:{now_bangkok.second:02d} Bangkok time")
 
-        # Log detailed scheduler condition info at 00:15
-        if hour == 0 and 15 <= minute < 17:
+        # Log detailed scheduler condition info at 11:00
+        if hour == 11 and 0 <= minute < 2:
             log_info(f"Scheduler condition check: hour={hour}, minute={minute}, current_date={now_bangkok.date()}, last_run_date={last_run_date}")
             
-        # Normal daily run at 00:15 (allow 00:15-00:16 to ensure we don't miss it)
-        if hour == 0 and 15 <= minute < 17 and last_run_date != now_bangkok.date():
+        # Normal daily run at 11:00 (allow 11:00-11:01 to ensure we don't miss it)
+        if hour == 11 and 0 <= minute < 2 and last_run_date != now_bangkok.date():
             success = run_report()
             if success:
                 last_run_date = now_bangkok.date()
@@ -209,8 +215,8 @@ if __name__ == "__main__":
                 retry_on_failure = True
                 last_failed_retry_hour = hour
 
-        # Retry on the hour if previous run failed, but only up to and including 09:00
-        elif retry_on_failure and minute == 0 and last_failed_retry_hour != hour and 1 < hour <= 9:
+        # Retry on the hour if previous run failed, but only up to and including 18:00
+        elif retry_on_failure and minute == 0 and last_failed_retry_hour != hour and 12 <= hour <= 18:
             log_info(f"Retrying extraction at {hour:02d}:00...")
             success = run_report()
             if success:
@@ -220,9 +226,9 @@ if __name__ == "__main__":
             else:
                 last_failed_retry_hour = hour
                 log_warning(f"Retry at {hour:02d}:00 failed, will try again next hour if within retry window")
-            # If it's after 09:00, stop retrying until the next day
-        elif retry_on_failure and hour > 9:
-            log_warning("Maximum retry window reached (after 09:00). Will not retry until next scheduled day.")
+            # If it's after 18:00, stop retrying until the next day
+        elif retry_on_failure and hour > 18:
+            log_warning("Maximum retry window reached (after 18:00). Will not retry until next scheduled day.")
             retry_on_failure = False
 
         log_info("Waiting for next run...")
