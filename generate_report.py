@@ -171,21 +171,36 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
     return all_balances_ok
 
 if __name__ == "__main__":
-    # --- Restore this code for real scheduling
     # Always use Asia/Bangkok time for scheduling
     BANGKOK_TZ = pytz.timezone("Asia/Bangkok")
+    now_bangkok = datetime.now(BANGKOK_TZ)
+    
     log_step("Scheduler started")
     log_info("Waiting for next run at 00:15 Asia/Bangkok time...")
-    last_run_date = None
+    log_info(f"Current date/time: {now_bangkok.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Initialize to yesterday's date so it will run today if in the correct time window
+    yesterday = (now_bangkok - timedelta(days=1)).date()
+    last_run_date = yesterday if now_bangkok.hour > 0 or (now_bangkok.hour == 0 and now_bangkok.minute >= 17) else None
+    log_info(f"Initialized last_run_date to: {last_run_date}")
+    
     last_failed_retry_hour = None
     retry_on_failure = False
     while True:
         now_bangkok = datetime.now(BANGKOK_TZ)
         hour = now_bangkok.hour
         minute = now_bangkok.minute
+        
+        # Log current time every 5 minutes for debugging
+        if minute % 5 == 0 and now_bangkok.second < 2:
+            log_info(f"Scheduler check: Current time is {hour:02d}:{minute:02d}:{now_bangkok.second:02d} Bangkok time")
 
-        # Normal daily run at 00:15
-        if hour == 00 and minute == 15 and last_run_date != now_bangkok.date():
+        # Log detailed scheduler condition info at 00:15
+        if hour == 0 and 15 <= minute < 17:
+            log_info(f"Scheduler condition check: hour={hour}, minute={minute}, current_date={now_bangkok.date()}, last_run_date={last_run_date}")
+            
+        # Normal daily run at 00:15 (allow 00:15-00:16 to ensure we don't miss it)
+        if hour == 0 and 15 <= minute < 17 and last_run_date != now_bangkok.date():
             success = run_report()
             if success:
                 last_run_date = now_bangkok.date()
