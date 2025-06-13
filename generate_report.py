@@ -207,25 +207,36 @@ if __name__ == "__main__":
             
         # Normal daily run at 00:15 (allow 00:15-00:16 to ensure we don't miss it)
         if hour == 0 and 15 <= minute < 17 and last_run_date != now_bangkok.date():
+            log_step("Starting scheduled 00:15 daily run")
             success = run_report()
+            
+            # IMPORTANT: Always update last_run_date to prevent multiple runs on the same day
+            # This must happen even if the run fails
+            last_run_date = now_bangkok.date()
+            
             if success:
-                last_run_date = now_bangkok.date()
+                log_success("Scheduled run completed successfully")
                 retry_on_failure = False
             else:
+                log_warning("Scheduled run failed, will retry hourly starting at 01:00")
                 retry_on_failure = True
                 last_failed_retry_hour = hour
 
         # Retry on the hour if previous run failed, but only up to and including 09:00
-        elif retry_on_failure and minute == 0 and last_failed_retry_hour != hour and 1 <= hour <= 9:
-            log_info(f"Retrying extraction at {hour:02d}:00...")
+        # Use a 3-minute window (XX:00-XX:02) to ensure we don't miss it due to sleep intervals
+        elif retry_on_failure and 0 <= minute <= 2 and last_failed_retry_hour != hour and 1 <= hour <= 9:
+            log_step(f"Starting hourly retry at {hour:02d}:{minute:02d}")
+            log_info(f"Previous failed hour: {last_failed_retry_hour}, current hour: {hour}")
+            
+            # Track this hour as attempted
+            last_failed_retry_hour = hour
+            
             success = run_report()
             if success:
-                last_run_date = now_bangkok.date()
+                log_success(f"Retry at {hour:02d}:00 succeeded")
                 retry_on_failure = False
-                log_success("Retry succeeded")
             else:
-                last_failed_retry_hour = hour
-                log_warning(f"Retry at {hour:02d}:00 failed, will try again next hour if within retry window")
+                log_warning(f"Retry at {hour:02d}:00 failed, will try again next hour if within retry window (1-9 AM)")
             # If it's after 09:00, stop retrying until the next day
         elif retry_on_failure and hour > 9:
             log_warning("Maximum retry window reached (after 09:00). Will not retry until next scheduled day.")

@@ -69,14 +69,60 @@ def login_vas():
 
         log_info("Redirecting to report page...")
         driver.get("https://va-vasbo.ipps.co.th/vas-web/report/amc_all_report/")
-        time.sleep(2)
+        log_info("Waiting for page to load completely...")
+        time.sleep(5)  # Increased wait time
 
         # Select previous day's date
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%d/%m/%Y")
         log_info(f"Selecting report date: {yesterday}")
 
-        date_input = driver.find_element(By.ID, "businessDate")
-        driver.execute_script(f"arguments[0].value = '{yesterday}'", date_input)
+        try:
+            # Try multiple methods to find the date input field
+            date_input = None
+            selectors = [
+                (By.ID, "businessDate"),
+                (By.NAME, "businessDate"),
+                (By.XPATH, "//input[contains(@id, 'Date') or contains(@name, 'Date')]"),
+                (By.XPATH, "//input[@type='date' or @type='text'][contains(@placeholder, 'date') or contains(@class, 'date')]"),
+                (By.CSS_SELECTOR, "input.form-control[type='text']")
+            ]
+            
+            # Try each selector
+            for method, selector in selectors:
+                try:
+                    log_info(f"Trying to find date input with {method}: {selector}")
+                    date_input = WebDriverWait(driver, 3).until(
+                        EC.presence_of_element_located((method, selector))
+                    )
+                    log_success(f"Found date input with {method}: {selector}")
+                    break
+                except:
+                    continue
+            
+            if date_input is None:
+                # Last resort: take screenshot and find all input elements
+                driver.save_screenshot("vas_report_page.png")
+                log_warning("Could not find date input field by standard selectors. Listing all inputs:")
+                inputs = driver.find_elements(By.TAG_NAME, "input")
+                for i, inp in enumerate(inputs):
+                    try:
+                        log_info(f"Input {i}: id={inp.get_attribute('id')}, name={inp.get_attribute('name')}, type={inp.get_attribute('type')}")
+                    except:
+                        pass
+                # Try the first text input as fallback
+                text_inputs = [inp for inp in inputs if inp.get_attribute('type') == 'text']
+                if text_inputs:
+                    date_input = text_inputs[0]
+                    log_warning("Using first text input as fallback for date")
+            
+            # If we found a date input, use it
+            if date_input:
+                driver.execute_script(f"arguments[0].value = '{yesterday}'", date_input)
+            else:
+                raise Exception("Could not find date input field using any method")
+        except Exception as e:
+            log_error(f"Error finding date input: {str(e)}")
+            raise
 
         # Click Search
         search_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Search')]")
