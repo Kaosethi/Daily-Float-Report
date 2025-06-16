@@ -124,16 +124,133 @@ def login_vas():
             log_error(f"Error finding date input: {str(e)}")
             raise
 
-        # Click Search
-        search_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Search')]")
-        search_button.click()
-        log_success("Search triggered for previous day.")
+        # Click Search - try multiple methods to find the search button
+        log_info("Looking for Search button...")
+        
+        # Take screenshot for debugging
+        driver.save_screenshot("vas_before_search.png")
+        log_success("Saved screenshot before search attempt")
+        
+        search_button = None
+        search_selectors = [
+            (By.XPATH, "//button[contains(text(), 'Search')]"),
+            (By.XPATH, "//input[@type='submit' and (contains(@value, 'Search') or contains(@value, 'search'))]"),
+            (By.XPATH, "//button[contains(@class, 'search') or contains(@id, 'search')]"),
+            (By.CSS_SELECTOR, "button.btn-search, button.search-btn"),
+            (By.XPATH, "//button[contains(@onclick, 'search')]"),
+            (By.XPATH, "//a[contains(text(), 'Search')]"),
+            (By.XPATH, "//span[contains(text(), 'Search')]/parent::button"),
+            (By.XPATH, "//i[contains(@class, 'search')]/parent::button")
+        ]
+        
+        # Try each selector
+        for method, selector in search_selectors:
+            try:
+                log_info(f"Trying to find search button with {method}: {selector}")
+                search_button = WebDriverWait(driver, 3).until(
+                    EC.element_to_be_clickable((method, selector))
+                )
+                log_success(f"Found search button with {method}: {selector}")
+                break
+            except:
+                continue
+        
+        if search_button is None:
+            # Last resort: list all buttons and clickable elements
+            log_warning("Could not find search button by standard selectors. Listing all buttons:")
+            buttons = driver.find_elements(By.TAG_NAME, "button")
+            for i, btn in enumerate(buttons):
+                try:
+                    btn_text = btn.text.strip()
+                    btn_class = btn.get_attribute("class")
+                    log_info(f"Button {i}: text='{btn_text}', class='{btn_class}'")
+                    # If the button has search-related text, use it
+                    if "search" in btn_text.lower():
+                        search_button = btn
+                        log_warning(f"Using button with text: {btn_text}")
+                        break
+                except:
+                    pass
+            
+            # If still not found, try other clickable elements
+            if search_button is None:
+                clickable_elements = driver.find_elements(By.XPATH, "//a | //input[@type='submit'] | //input[@type='button']")
+                for i, elem in enumerate(clickable_elements):
+                    try:
+                        elem_text = elem.text.strip() if elem.tag_name == "a" else elem.get_attribute("value")
+                        log_info(f"{elem.tag_name.capitalize()} {i}: text/value='{elem_text}'")
+                        if "search" in (elem_text or "").lower():
+                            search_button = elem
+                            log_warning(f"Using {elem.tag_name} with text: {elem_text}")
+                            break
+                    except:
+                        pass
+                
+                # Last resort - try the first button that looks like it might be a submit
+                if search_button is None and buttons:
+                    for btn in buttons:
+                        try:
+                            btn_class = (btn.get_attribute("class") or "").lower()
+                            if "primary" in btn_class or "submit" in btn_class or "search" in btn_class:
+                                search_button = btn
+                                log_warning(f"Using first button with relevant class: {btn_class}")
+                                break
+                        except:
+                            pass
+                    
+                    # If still no luck, just use the first button
+                    if search_button is None and buttons:
+                        search_button = buttons[0]
+                        log_warning("Using first button as last resort")
+        
+        if search_button:
+            search_button.click()
+            log_success("Search action triggered")
+        else:
+            log_error("Could not find any search button or clickable element")
+            raise Exception("No search button found")
+            
+        # Save another screenshot after clicking search
+        time.sleep(1)
+        driver.save_screenshot("vas_after_search.png")
+        log_info("Saved screenshot after search attempt")
 
-        # Wait for the result to appear
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//td[contains(text(), '.csv') or contains(text(), 'Report')]"))
-        )
-        log_success("Report result appeared (next step: download).")
+        # Wait for the result to appear with more flexible selectors
+        log_info("Waiting for report results to appear...")
+        try:
+            # Try multiple selectors for detecting results
+            result_selectors = [
+                (By.XPATH, "//td[contains(text(), '.csv') or contains(text(), 'Report')]"),
+                (By.XPATH, "//table//tr[position() > 1]"),  # Any table row beyond header
+                (By.XPATH, "//div[contains(@class, 'result') or contains(@id, 'result')]"),
+                (By.XPATH, "//div[contains(@class, 'table')]"),
+                (By.XPATH, "//a[contains(@href, '.csv') or contains(@href, '.xlsx')]"),
+            ]
+            
+            # Try each selector
+            found = False
+            for method, selector in result_selectors:
+                try:
+                    log_info(f"Looking for results with {method}: {selector}")
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((method, selector))
+                    )
+                    log_success(f"Found results with {method}: {selector}")
+                    found = True
+                    break
+                except:
+                    continue
+                    
+            if not found:
+                log_warning("Could not detect results with standard selectors, but proceeding anyway")
+                    
+        except Exception as e:
+            log_warning(f"Warning: Could not confirm results appeared: {str(e)} - attempting to proceed anyway")
+            
+        # Take screenshot of results page
+        driver.save_screenshot("vas_search_results.png")
+        log_success("Report results page captured (next step: download).")
+        time.sleep(2)  # Additional wait to ensure page is fully loaded
 
         # Step 1: Build expected filename
         file_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")

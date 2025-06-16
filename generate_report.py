@@ -5,8 +5,9 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
 # If you still get SSL errors, try running this script with Python 3.10–3.12, as some newer/older versions may have SSL bugs.
 from dotenv import load_dotenv
-import sendgrid
-from sendgrid.helpers.mail import Mail
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import schedule
 import time
 from datetime import datetime, timedelta
@@ -22,8 +23,21 @@ from main3 import login_and_get_cimb_balance
 
 load_dotenv()
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = os.getenv("SENDGRID_FROM_EMAIL")
-TO_EMAIL = [email.strip() for email in os.getenv("SENDGRID_TO_EMAIL", "").split(",") if email.strip()]
+VAS_USERNAME = os.getenv("VAS_USERNAME")
+VAS_PASSWORD = os.getenv("VAS_PASSWORD")
+CIMB_COMPANY_ID = os.getenv("CIMB_COMPANY_ID")
+CIMB_USERNAME = os.getenv("CIMB_USERNAME")
+CIMB_PASSWORD = os.getenv("CIMB_PASSWORD")
+V2_USERNAME = os.getenv("V2_USERNAME")
+V2_PASSWORD = os.getenv("V2_PASSWORD")
+
+# Email settings
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+FROM_EMAIL = os.getenv("FROM_EMAIL") or SMTP_USERNAME
+TO_EMAIL = os.getenv("TO_EMAIL", "")
 
 def safe_float(val):
     try:
@@ -132,27 +146,44 @@ Daily Float Reconciliation Report\nReport generated at: {report_generated_str}\n
     for line in report.strip().split('\n'):
         log_info(line)
 
-    # --- Send email via SendGrid ---
+    # --- Send email via SMTP ---
     # First, check if all balances were successfully retrieved
     if None not in (CIMB_balance, V2_balance, VAS_balance):
-        # If all balances are present, then check for SendGrid credentials
-        if SENDGRID_API_KEY and FROM_EMAIL and TO_EMAIL:
-            sg = sendgrid.SendGridAPIClient(api_key=SENDGRID_API_KEY.strip('"'))
-            message = Mail(
-                from_email=FROM_EMAIL,
-                to_emails=TO_EMAIL,
-                subject=f"Daily Float Reconciliation Report for {report_date}",
-                plain_text_content=report,
-                html_content=html_report
-            )
+        # Check if SMTP settings are available
+        if SMTP_SERVER and SMTP_USERNAME and SMTP_PASSWORD and TO_EMAIL:
             try:
-                response = sg.send(message)
-                log_success(f"Email sent! Status code: {response.status_code}")
+                # Create message container
+                msg = MIMEMultipart('alternative')
+                msg['Subject'] = f"Daily Float Reconciliation Report for {report_date}"
+                msg['From'] = FROM_EMAIL
+                
+                # Check if TO_EMAIL is a list or string
+                if isinstance(TO_EMAIL, list):
+                    recipients = TO_EMAIL
+                    msg['To'] = ", ".join(recipients)
+                else:
+                    recipients = [email.strip() for email in TO_EMAIL.split(",") if email.strip()]
+                    msg['To'] = TO_EMAIL
+                
+                # Attach parts
+                part1 = MIMEText(report, 'plain')
+                part2 = MIMEText(html_report, 'html')
+                msg.attach(part1)
+                msg.attach(part2)
+                
+                # Connect to server and send
+                log_info(f"Connecting to SMTP server {SMTP_SERVER}:{SMTP_PORT}")
+                server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
+                server.login(SMTP_USERNAME, SMTP_PASSWORD)
+                
+                server.sendmail(FROM_EMAIL, recipients, msg.as_string())
+                server.quit()
+                log_success(f"Email sent successfully to {msg['To']}")
             except Exception as e:
-                log_error(f"Failed to send email: {e}", exc_info=True)
+                log_error(f"Failed to send email: {e}")
+                # Continue execution even if email fails
         else:
-            # Credentials missing, so email cannot be sent
-            log_error("SendGrid credentials not set. Email not sent due to missing credentials.")
+            log_warning("Email not sent: SMTP settings incomplete in .env file")
     else:
         # One or more balances are missing, so email will not be sent
         log_error("One or more balances missing. Email not sent due to incomplete data.")
